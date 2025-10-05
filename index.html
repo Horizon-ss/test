@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>تقرير رفع موقع - v10 → v10.1 (Location+POPs)</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --page:#0b3d2e; --card:#eef2f6; --ink:#0f172a; --muted:#64748b; --line:#cbd5e1;
+      --ok:#0ea5a5; --accent:#065f46;
+    }
+    html,body{background:var(--page);color:var(--ink);font-family:Verdana,'Cairo',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif}
+    .card{border-radius:14px;background:var(--card);box-shadow:0 2px 10px rgba(0,0,0,.15);border:0}
+    .card-header{background:var(--card);font-weight:700;border-bottom:1px solid rgba(0,0,0,.04)}
+    .form-label{font-weight:600;font-size:.92rem}
+    .form-control{padding:.4rem .6rem;font-size:.92rem;background:#fff;border-color:#dfe6ee}
+    .form-control:focus{box-shadow:0 0 0 .15rem rgba(16,185,129,.25)}
+    .table> :not(caption)>*>*{padding:.5rem .6rem}
+    .table.table-sm> :not(caption)>*>*{padding:.35rem .5rem}
+    .hint{color:var(--muted)}
+    .hidden{display:none!important}
+    .required:after{content:" *";color:#d72d2d;margin-right:4px}
+    #statusBar,#statusBar2{font-size:.95rem;color:#e2e8f0}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .btn-primary{background:#0ea5a5;border-color:#0ea5a5}
+    .btn-outline-primary{color:#0ea5a5;border-color:#0ea5a5}
+    .btn-outline-primary:hover{background:#0ea5a5;color:#fff}
+    .banner{display:none;background:#fff3cd;color:#7c5600;border:1px solid #ffe69c;border-radius:10px;padding:10px 12px;margin-bottom:10px}
+    .banner.show{display:block}
+    /* POP list */
+    .pop-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+    .pop-item{display:flex;align-items:center;justify-content:space-between;gap:14px;background:#fff;border:1px dashed var(--line);border-radius:12px;padding:10px 12px}
+    .pop-main{display:flex;align-items:center;gap:10px;min-width:0}
+    .pop-title{font-weight:700;max-width:48vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pop-meta{color:#334155;font-size:.9rem;white-space:nowrap}
+    .arrow{width:22px;height:22px;flex:0 0 22px;transition:transform 160ms linear}
+    .pop-actions .btn{background:#0a6;border:0;border-radius:8px;padding:6px 10px}
+  </style>
+</head>
+<body>
+
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 text-white">
+    <h1 class="h5 m-0" style="font-family:Verdana,'Cairo',sans-serif">تقرير رفع موقع</h1>
+    <span class="badge bg-light text-dark border">v10.1</span>
+  </div>
+
+  <div id="insecureBanner" class="banner"></div>
+
+  <!-- معلومات عامة -->
+  <div class="card mb-3">
+    <div class="card-header">معلومات الزبون والموقع</div>
+    <div class="card-body row g-3">
+      <div class="col-md-4">
+        <label class="form-label required">اسم الكوستمر</label>
+        <input id="customerName" type="text" class="form-control" placeholder="مثال: شركة س">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">رقم الهاتف</label>
+        <input id="phone" type="tel" class="form-control" placeholder="07xx xxx xxxx">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label required">الباند</label>
+        <input id="bandField" type="text" class="form-control" placeholder="5GHz / 60GHz / Fiber">
+      </div>
+
+      <div class="col-md-9">
+        <label class="form-label required">الموقع</label>
+        <div class="d-flex flex-wrap gap-2">
+          <input id="location" type="text" class="form-control" placeholder="33.3152, 44.3661 أو 44.3661 33.3152">
+          <button id="pickLoc" type="button" class="btn btn-outline-primary btn-sm">📍 التقاط تلقائي</button>
+          <button id="trackBtn" type="button" class="btn btn-outline-primary btn-sm">▶️ تشغيل التتبع</button>
+          <button id="openMapBtn" type="button" class="btn btn-outline-primary btn-sm">🗺️ فتح بالخريطة</button>
+          <button id="nearestBtn" type="button" class="btn btn-success btn-sm">🔍 أقرب 3 بوبات</button>
+          <button id="compassBtn" type="button" class="btn btn-outline-primary btn-sm">🧭 تفعيل البوصلة</button>
+        </div>
+        <div class="hint mt-1">الموقع والبوصلة يعملان فقط عبر <b>HTTPS</b> أو <b>localhost</b>. المسافة = <b>إزاحة (خط مستقيم)</b>، لمسار الطريق استخدم زر <b>مسار</b>.</div>
+        <div id="statusBar" class="small mt-2"></div>
+        <div id="trackInfo" class="small text-secondary"></div>
+        <div id="nearestResult" class="pop-list"></div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">التاريخ</label>
+        <input id="reportDate" type="date" class="form-control">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label required">اسم الفني</label>
+        <input id="techName" type="text" class="form-control" placeholder="اسم الفني">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label required">المتابعة مع</label>
+        <input id="engName" type="text" class="form-control" placeholder="اسم المسؤول">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">POP/بوب</label>
+        <input id="popField" type="text" class="form-control" placeholder="مثال: POP-123">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">العبّار</label>
+        <input id="abarField" type="text" class="form-control" placeholder="A/B/C">
+      </div>
+    </div>
+  </div>
+
+  <!-- الصور -->
+  <div class="card mb-3">
+    <div class="card-header">الصور المطلوبة</div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        <label class="form-label required">صورة باتجاه البوب</label>
+        <input id="img_pop" type="file" accept="image/*" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label required">صورة مكان التور/البول</label>
+        <input id="img_tower" type="file" accept="image/*" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label required">صورة مكان نصب الراك/الراوتر</label>
+        <input id="img_rack" type="file" accept="image/*" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label required">صور أماكن تسليك الكيبلات</label>
+        <input id="img_cables" type="file" accept="image/*" multiple class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">صور أخرى (اختياري)</label>
+        <input id="img_other" type="file" accept="image/*" multiple class="form-control">
+      </div>
+    </div>
+  </div>
+
+  <!-- المواد المطلوبة -->
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>المواد المطلوبة</span>
+      <button id="addCustomRow" class="btn btn-success btn-sm">➕ إضافة مادة</button>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>الجهاز</th>
+              <th>التفاصيل</th>
+              <th style="width:12%">العدد</th>
+              <th>ملاحظات</th>
+              <th style="width:8%"></th>
+            </tr>
+          </thead>
+          <tbody id="extrasBody">
+            <tr data-extra="dish">
+              <td>الدش (Dish)</td>
+              <td><input type="text" class="form-control extra-det" placeholder="مواصفات/حجم الدش"></td>
+              <td><input type="number" min="0" class="form-control extra-qty" placeholder="0"></td>
+              <td><input type="text" class="form-control extra-note" placeholder="ملاحظات"></td>
+              <td></td>
+            </tr>
+            <tr data-extra="linkRouter">
+              <td>راوتر اللنك</td>
+              <td><input type="text" class="form-control extra-det" placeholder="اسم/موديل راوتر اللنك"></td>
+              <td><input type="number" min="0" class="form-control extra-qty" placeholder="0"></td>
+              <td><input type="text" class="form-control extra-note" placeholder="ملاحظات"></td>
+              <td></td>
+            </tr>
+            <tr data-extra="routerType">
+              <td>نوع الراوتر</td>
+              <td><input type="text" class="form-control extra-det" placeholder="اسم/موديل الراوتر"></td>
+              <td><input type="number" min="0" class="form-control extra-qty" placeholder="0"></td>
+              <td><input type="text" class="form-control extra-note" placeholder="ملاحظات"></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- المواد (مدمجة) -->
+  <div class="card mb-3">
+    <div class="card-header sr-only">المواد</div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:28%">المادة</th>
+              <th style="width:14%">تفعيل</th>
+              <th style="width:12%">العدد</th>
+              <th>خيارات خاصة</th>
+              <th style="width:10%">حذف</th>
+            </tr>
+          </thead>
+          <tbody id="materialsBody">
+            <tr data-key="tower">
+              <td>تور</td>
+              <td><input type="checkbox" class="form-check-input"></td>
+              <td><input type="number" min="0" class="form-control hidden" placeholder="0"></td>
+              <td>
+                <div class="form-check form-check-inline hidden">
+                  <input class="form-check-input" type="radio" name="tower_pos" id="tower_ground">
+                  <label class="form-check-label" for="tower_ground">من الأرض</label>
+                </div>
+                <div class="form-check form-check-inline hidden">
+                  <input class="form-check-input" type="radio" name="tower_pos" id="tower_roof">
+                  <label class="form-check-label" for="tower_roof">من السطح</label>
+                </div>
+              </td>
+              <td></td>
+            </tr>
+            <tr data-key="pole">
+              <td>بول</td>
+              <td><input type="checkbox" class="form-check-input"></td>
+              <td><input type="number" min="0" class="form-control hidden" placeholder="0"></td>
+              <td>
+                <div class="form-check form-check-inline hidden">
+                  <input class="form-check-input" type="radio" name="pole_fix_type" id="pole_weld">
+                  <label class="form-check-label" for="pole_weld">لحيم</label>
+                </div>
+                <div class="form-check form-check-inline hidden">
+                  <input class="form-check-input" type="radio" name="pole_fix_type" id="pole_fix">
+                  <label class="form-check-label" for="pole_fix">تثبيت</label>
+                </div>
+              </td>
+              <td></td>
+            </tr>
+            <tr data-key="rack">
+              <td>راك</td>
+              <td><input type="checkbox" class="form-check-input"></td>
+              <td><input type="number" min="0" class="form-control hidden" placeholder="0"></td>
+              <td>
+                <input id="size_rack" type="text" class="form-control hidden" placeholder="حجم الراك (U)">
+              </td>
+              <td></td>
+            </tr>
+            <tr data-key="cable">
+              <td>كيبل</td>
+              <td><input type="checkbox" class="form-check-input"></td>
+              <td><input type="number" min="0" class="form-control hidden" placeholder="0"></td>
+              <td><input type="text" class="form-control hidden" placeholder="ملاحظات/طول/نوع"></td>
+              <td></td>
+            </tr>
+            <tr data-key="sfp">
+              <td>SFP</td>
+              <td><input type="checkbox" class="form-check-input"></td>
+              <td><input type="number" min="0" class="form-control hidden" placeholder="0"></td>
+              <td><input type="text" class="form-control hidden" placeholder="موديل/ملاحظات"></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-5">
+    <div class="card-header">ملاحظات</div>
+    <div class="card-body">
+      <textarea id="finalNotes" class="form-control" rows="3" placeholder="ملاحظات عامة..."></textarea>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 mb-2">
+    <button id="exportBtn" class="btn btn-primary btn-sm">💾 تصدير PDF</button>
+    <button id="shareBtn" class="btn btn-outline-primary btn-sm">🔗 مشاركة</button>
+    <div id="statusBar2" class="align-self-center ms-2 text-white"></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const $=(s,c=document)=>c.querySelector(s);
+  const $$=(s,c=document)=>Array.from(c.querySelectorAll(s));
+  const secure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
+  // HTTPS banner
+  const banner = $('#insecureBanner');
+  if(!secure){
+    banner.classList.add('show');
+    banner.innerHTML = '⚠️ الموقع/البوصلة يعملان فقط عبر <b>HTTPS</b> أو <b>localhost</b>. للتشغيل محليًا: <code>python -m http.server 8000</code> ثم افتح <b>http://localhost:8000</b>.';
+  }
+
+  // Auto date
+  const d = $('#reportDate');
+  if(d && !d.value){ const now=new Date(); d.value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
+
+  // ---------- POPS load ----------
+  let POPS=null, popsError=null;
+  async function loadPOPS(){
+    try{
+      const r=await fetch('./pops.json', {cache:'no-store'});
+      POPS = await r.json();
+      $('#statusBar').textContent = `تم تحميل البوبات (${POPS.length}).`;
+    }catch(e){
+      popsError = e;
+      $('#statusBar').textContent = 'تعذر تحميل بيانات البوبات (pops.json)';
+    }
+  }
+  loadPOPS();
+
+  // ---------- Utilities ----------
+  const toRad = d=>d*Math.PI/180, toDeg = r=>r*180/Math.PI;
+  function distanceKm(lat1, lon1, lat2, lon2){
+    const R=6371, dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  function bearingDeg(lat1, lon1, lat2, lon2){
+    const y=Math.sin(toRad(lon2-lon1))*Math.cos(toRad(lat2));
+    const x=Math.cos(toRad(lat1))*Math.sin(toRad(lat2)) - Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(toRad(lon2-lon1));
+    return (toDeg(Math.atan2(y,x))+360)%360;
+  }
+  function parseLatLonFlexible(input){
+    if(!input) return null;
+    let s = input.trim().replace(/،/g, ',').replace(/;/g, ',').replace(/\s+/g, ' ').replace(' ,', ',').replace(', ', ',');
+    let parts = s.includes(',') ? s.split(',') : s.split(' ');
+    parts = parts.map(x=>x.trim()).filter(Boolean);
+    if(parts.length !== 2) return null;
+    let a = parseFloat(parts[0]), b = parseFloat(parts[1]);
+    if(Number.isNaN(a) || Number.isNaN(b)) return null;
+    let lat, lon;
+    if(Math.abs(a) <= 90 && Math.abs(b) <= 180){ lat=a; lon=b; }
+    else if(Math.abs(b) <= 90 && Math.abs(a) <= 180){ lat=b; lon=a; }
+    else { return null; }
+    return {lat, lon};
+  }
+  function formatDistance(km){ return km < 1 ? `${Math.round(km*1000)} م` : `${km.toFixed(2)} كم`; }
+
+  // ---------- Compass ----------
+  let COMPASS_ON=false, DEVICE_HEADING=0;
+  const arrowNodes=[];
+  function extractHeading(evt){
+    if(typeof evt.webkitCompassHeading === 'number'){ return evt.webkitCompassHeading; }
+    if(typeof evt.alpha === 'number'){ return (360 - evt.alpha) % 360; }
+    return DEVICE_HEADING;
+  }
+  function updateArrowsRotation(){
+    arrowNodes.forEach(node=>{
+      const absB=parseFloat(node.dataset.absbearing||'0');
+      const rel=(absB - DEVICE_HEADING + 360)%360;
+      node.style.transform=`rotate(${Math.round(rel)}deg)`;
+    });
+  }
+  async function enableCompass(){
+    try{
+      if(!secure){ alert('البوصلة تحتاج HTTPS أو localhost'); return; }
+      if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function'){
+        const perm=await DeviceOrientationEvent.requestPermission();
+        if(perm!=='granted'){ alert('تم رفض إذن البوصلة على iOS'); return; }
+      }
+      window.addEventListener('deviceorientation',(e)=>{ DEVICE_HEADING=extractHeading(e); if(COMPASS_ON) updateArrowsRotation(); }, true);
+      COMPASS_ON=true;
+      $('#statusBar').textContent='البوصلة مفعلة ✓';
+    }catch(err){ alert('تعذر تفعيل البوصلة: '+err.message); }
+  }
+  $('#compassBtn')?.addEventListener('click', enableCompass);
+
+  // ---------- Live GPS tracking ----------
+  let watchId=null;
+  function startTracking(){
+    if(!secure){ alert('التتبّع يحتاج HTTPS أو localhost'); return; }
+    if(!('geolocation' in navigator)) return alert('المتصفح لا يدعم تتبع الموقع');
+    if(watchId!==null) return;
+    watchId = navigator.geolocation.watchPosition((pos)=>{
+      const lat=pos.coords.latitude.toFixed(6), lon=pos.coords.longitude.toFixed(6);
+      $('#location').value = `${lat}, ${lon}`;
+      $('#trackInfo').textContent = `تتبّع مفعّل: دقّة ±${Math.round(pos.coords.accuracy)} م | آخر تحديث: ${new Date(pos.timestamp).toLocaleTimeString()}`;
+      computeNearest();
+    }, (err)=>{
+      alert('تتبّع GPS فشل: ' + err.message);
+    }, { enableHighAccuracy:true, timeout:20000, maximumAge:2000 });
+    $('#trackBtn').textContent='⏹️ إيقاف التتبع';
+  }
+  function stopTracking(){
+    if(watchId!==null){
+      navigator.geolocation.clearWatch(watchId);
+      watchId=null;
+      $('#trackInfo').textContent='';
+      $('#trackBtn').textContent='▶️ تشغيل التتبع';
+    }
+  }
+  $('#trackBtn')?.addEventListener('click', ()=>{ if(watchId===null) startTracking(); else stopTracking(); });
+
+  // ---------- Nearest 3 ----------
+  function renderNearest(lat, lon, ranked){
+    const out=$('#nearestResult'); out.innerHTML=''; arrowNodes.length=0;
+    ranked.forEach((p,idx)=>{
+      const item=document.createElement('div'); item.className='pop-item';
+      const main=document.createElement('div'); main.className='pop-main';
+      const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      arrow.setAttribute('viewBox','0 0 24 24'); arrow.classList.add('arrow');
+      arrow.dataset.absbearing=String(p.brng);
+      arrow.innerHTML='<path d="M12 3l5 6h-3v9h-4V9H7l5-6z" fill="#065f46" />';
+      const info=document.createElement('div');
+      info.innerHTML = `<div class="pop-title">#${idx+1} ${p.name}</div>
+                        <div class="pop-meta">المسافة: ${formatDistance(p.dist)} • الاتجاه: ${Math.round(p.brng)}°</div>`;
+      main.appendChild(arrow); main.appendChild(info);
+      const actions=document.createElement('div'); actions.className='pop-actions';
+      const btn=document.createElement('button'); btn.className='btn btn-sm text-white'; btn.textContent='➡️ مسار';
+      btn.onclick=()=>window.open(\`https://www.google.com/maps/dir/?api=1&origin=\${lat},\${lon}&destination=\${p.lat},\${p.lon}\`,'_blank');
+      actions.appendChild(btn);
+      item.appendChild(main); item.appendChild(actions); out.appendChild(item);
+      arrowNodes.push(arrow);
+    });
+    if(COMPASS_ON) updateArrowsRotation();
+    $('#statusBar').textContent = ranked.length ? `تم إيجاد ${ranked.length} أقرب بوبات.` : 'لم يتم العثور على بوبات قريبة.';
+  }
+  function computeNearest(){
+    const parsed = parseLatLonFlexible(($('#location')?.value||'').trim());
+    if(!parsed || !POPS || popsError) return;
+    const {lat, lon} = parsed;
+    const candidates = POPS.map(p=>({ ...p, dist: distanceKm(lat,lon,p.lat,p.lon), brng: bearingDeg(lat,lon,p.lat,p.lon) }))
+                           .sort((a,b)=>a.dist-b.dist);
+    const dedup=[]; // 50م
+    for(const p of candidates){
+      if(dedup.every(q => distanceKm(p.lat,p.lon,q.lat,q.lon) > 0.05)){
+        dedup.push(p); if(dedup.length===3) break;
+      }
+    }
+    renderNearest(lat, lon, dedup);
+    const popField = $('#popField'); if(popField && !popField.value && dedup[0]) popField.value = dedup[0].name;
+  }
+  $('#nearestBtn')?.addEventListener('click', computeNearest);
+
+  // ---------- Buttons ----------
+  $('#pickLoc')?.addEventListener('click', async()=>{
+    if(!secure){ alert('التقاط تلقائي يحتاج HTTPS أو localhost'); return; }
+    if(!('geolocation' in navigator)) return alert('المتصفح لا يدعم تحديد الموقع');
+    const loc=$('#location'); const btn=$('#pickLoc');
+    btn.disabled=true; const prev=btn.textContent; btn.textContent='جاري الالتقاط...';
+    try{
+      await new Promise((resolve,reject)=>{
+        navigator.geolocation.getCurrentPosition((pos)=>{
+          const lat=pos.coords.latitude.toFixed(6), lon=pos.coords.longitude.toFixed(6);
+          loc.value = `${lat}, ${lon}`; resolve();
+        }, reject, {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+      });
+      btn.textContent='تم ✓'; computeNearest();
+    }catch(e){ alert('تعذر تحديد الموقع: '+e.message); btn.textContent=prev; }
+    finally{ btn.disabled=false; }
+  });
+  $('#openMapBtn')?.addEventListener('click', ()=>{
+    const parsed = parseLatLonFlexible(($('#location')?.value||'').trim());
+    if(!parsed) return alert('أدخل الإحداثيات بصيغة صحيحة مثل: 33.269143, 44.298727');
+    window.open(`https://www.google.com/maps?q=${parsed.lat},${parsed.lon}`,'_blank');
+  });
+
+  // ---------- Materials toggles ----------
+  function bindToggleRow(tr){
+    const key=tr.getAttribute('data-key');
+    const chk=tr.querySelector('td:nth-child(2) input[type="checkbox"]');
+    const qty=tr.querySelector('td:nth-child(3) input[type="number"]');
+    const optsCell=tr.querySelector('td:nth-child(4)');
+    function show(el,on){ if(!el) return; el.classList.toggle('hidden', !on); }
+    function update(){
+      const on=!!(chk&&chk.checked);
+      show(qty,on);
+      if(optsCell) optsCell.querySelectorAll('input, label, select, .form-check').forEach(el=>show(el,on));
+      if(key==='rack') show(tr.querySelector('#size_rack'), on);
+    }
+    if(chk) chk.addEventListener('change', update);
+    update();
+  }
+  $$('#materialsBody tr[data-key]').forEach(bindToggleRow);
+
+  // ---------- Add/Delete custom material rows (extras table) ----------
+  $('#addCustomRow')?.addEventListener('click', ()=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><input type="text" class="form-control" placeholder="اسم المادة/الجهاز"></td>
+      <td><input type="text" class="form-control extra-det" placeholder="التفاصيل"></td>
+      <td><input type="number" min="0" class="form-control extra-qty" placeholder="0"></td>
+      <td><input type="text" class="form-control extra-note" placeholder="ملاحظات"></td>
+      <td><button type="button" class="btn btn-sm btn-outline-danger del-row">حذف</button></td>`;
+    $('#extrasBody').appendChild(tr);
+  });
+  $('#extrasBody')?.addEventListener('click', (e)=>{
+    if(e.target.classList.contains('del-row')){
+      e.target.closest('tr')?.remove();
+    }
+  });
+
+  // ---------- PDF (نفس منطق v10) ----------
+  function drawParagraph(ctx, text, x, y, maxW, lh){
+    const words = text.split(/(\s+)/).filter(Boolean);
+    let line='';
+    for(const w of words){
+      const test = line + w;
+      const width = ctx.measureText(test).width;
+      if(width > maxW && line){
+        ctx.fillText(line, x, y);
+        y += lh;
+        line = w.trimStart();
+      }else{
+        line = test;
+      }
+    }
+    if(line){ ctx.fillText(line, x, y); y += lh; }
+    return y;
+  }
+  async function buildFirstPageCanvas(){
+    const c = document.createElement('canvas');
+    const W = 2480, H = 3508; // A4 300dpi
+    c.width=W; c.height=H;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+
+    await document.fonts.ready;
+    ctx.direction='rtl'; ctx.textAlign='right';
+    const pad=160; let x=W-pad, y=pad; const maxW=W-pad*2; const lineH=60;
+
+    ctx.fillStyle='#0f172a'; ctx.font='700 78px Verdana, Cairo'; ctx.fillText('Site Survey', x, y); y += 84;
+
+    const kv=[]; const v=(sel)=> (document.querySelector(sel)?.value||'').trim();
+    const pop=v('#popField'), abar=v('#abarField');
+    kv.push(['الزبون', v('#customerName')]);
+    kv.push(['الباند', v('#bandField')]);
+    kv.push(['هاتف', v('#phone')]);
+    kv.push(['الموقع', v('#location')]);
+    if(pop || abar) kv.push(['البوب/العبّار', `${pop||''}${abar? ' | '+abar:''}`]);
+    kv.push(['الفني', v('#techName')]);
+    kv.push(['المتابعة مع', v('#engName')]);
+    kv.push(['التاريخ', v('#reportDate')]);
+
+    for(const [label,val] of kv){
+      if(!val) continue;
+      ctx.font='600 44px Verdana, Cairo'; const lab=label+': '; const labW=ctx.measureText(lab).width; ctx.fillText(lab, x, y);
+      ctx.font='400 44px Verdana, Cairo'; y = drawParagraph(ctx, val, x - labW, y, maxW - labW, lineH);
+    }
+
+    y += 14; ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke(); y += 56;
+
+    ctx.font='700 50px Verdana, Cairo'; ctx.fillText('المواد المطلوبة', x, y); y += 18; ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke(); y += 34;
+
+    const lines=[];
+    $$('#extrasBody tr').forEach(tr=>{
+      const nameInput = tr.cells[0].querySelector('input');
+      const name = nameInput ? nameInput.value.trim() : tr.cells[0].innerText.trim();
+      const det =tr.querySelector('.extra-det')?.value?.trim();
+      const qty =tr.querySelector('.extra-qty')?.value?.trim();
+      const note=tr.querySelector('.extra-note')?.value?.trim();
+      if(!(qty||det||note||name)) return;
+      const parts=[]; if(det) parts.push(det); if(qty) parts.push('العدد: '+qty); if(note) parts.push('ملاحظات: '+note);
+      lines.push(`${name||'مادة'}: ${parts.join(' | ')}`);
+    });
+    ctx.font='400 44px Verdana, Cairo';
+    for(const t of (lines.length? lines : ['لا توجد مواد.'])){
+      y = drawParagraph(ctx, (t.startsWith('•')? t : '• '+t), x, y, maxW, lineH);
+    }
+
+    const notes=(document.querySelector('#finalNotes')?.value||'').trim();
+    if(notes){ y += 22; y = drawParagraph(ctx, 'الملاحظات: ' + notes, x, y, maxW, lineH); }
+
+    return c.toDataURL('image/jpeg', 0.98);
+  }
+  async function imageDataUrlsFromInputs(){
+    const list=[];
+    async function push(input,label){
+      const files=Array.from((input?.files)||[]);
+      for(const f of files){
+        const du = await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(f); });
+        list.push({label, name:f.name, dataUrl:du});
+      }
+    }
+    await push($('#img_pop'),'صورة باتجاه البوب');
+    await push($('#img_tower'),'صورة مكان التور/البول');
+    await push($('#img_rack'),'صورة مكان نصب الراك/الراوتر');
+    await push($('#img_cables'),'صور أماكن تسليك الكيبلات');
+    await push($('#img_other'),'صور أخرى');
+    return list;
+  }
+  function captionAsImage(text, widthMM, heightMM){
+    const dpi = 300, mmToPx = mm => Math.round(mm * dpi / 25.4);
+    const W = mmToPx(widthMM), H = mmToPx(heightMM);
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+    ctx.direction = 'rtl'; ctx.textAlign='center'; ctx.fillStyle = '#111827'; ctx.font = '400 28px Verdana, Cairo';
+    ctx.fillText(text, W/2, Math.round(H*0.65)); return c.toDataURL('image/png');
+  }
+  function addImagePage(doc, dataUrl, caption){
+    return new Promise((resolve)=>{
+      const img=new Image(); img.onload=()=>{
+        const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
+        const iw=img.naturalWidth, ih=img.naturalHeight, r=Math.min((pageW-20)/iw, (pageH-30-10)/ih), w=iw*r, h=ih*r;
+        doc.addPage(); doc.addImage(dataUrl,'JPEG',(pageW-w)/2,10,w,h,undefined,'FAST');
+        if(caption){ const capDU = captionAsImage(caption, pageW-20, 12); doc.addImage(capDU,'PNG',10,pageH-16,pageW-20,12,undefined,'FAST'); }
+        resolve();
+      }; img.onerror=()=>{ doc.addPage(); resolve(); }; img.src=dataUrl;
+    });
+  }
+  async function buildPdfBlob(){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:'a4', compress:true});
+
+    $('#statusBar').textContent='جارٍ تجهيز الصفحة 1 ...';
+    const page1 = await buildFirstPageCanvas();
+    const pimg = new Image(); await new Promise(res=>{ pimg.onload=res; pimg.src=page1; });
+    const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+    const r = Math.min((pageW-20)/pimg.naturalWidth, (pageH-20)/pimg.naturalHeight);
+    const w = pimg.naturalWidth*r, h = pimg.naturalHeight*r;
+    doc.addImage(page1, 'JPEG', (pageW-w)/2, (pageH-h)/2, w, h, undefined, 'FAST');
+
+    $('#statusBar2').textContent='جارٍ إضافة الصور ...';
+    const photos = await imageDataUrlsFromInputs();
+    for(let i=0;i<photos.length;i++){
+      const cap = `${photos[i].label}${photos.length>1? ' - '+(i+1):''}`;
+      await addImagePage(doc, photos[i].dataUrl, cap);
+      $('#statusBar2').textContent = `إضافة الصور (${i+1}/${photos.length}) ...`;
+    }
+    const blob = doc.output('blob');
+    const name = ($('#customerName')?.value || 'Site_Survey').replace(/[\\/:*?"<>|]/g,'_') + '.pdf';
+    return {blob, name};
+  }
+  async function exportPDF(){
+    const need=(sel)=> (document.querySelector(sel)?.value||'').trim().length>0;
+    const needF=(sel)=> (document.querySelector(sel)?.files||[]).length>0;
+    const errs=[];
+    if(!need('#customerName')) errs.push('اسم الكوستمر'); if(!need('#location')) errs.push('الموقع'); if(!need('#bandField')) errs.push('الباند'); if(!need('#techName')) errs.push('اسم الفني'); if(!need('#engName')) errs.push('المتابعة مع');
+    if(!needF('#img_pop')) errs.push('صورة باتجاه البوب'); if(!needF('#img_tower')) errs.push('صورة مكان التور/البول'); if(!needF('#img_rack')) errs.push('صورة مكان نصب الراك/الراوتر'); if(!needF('#img_cables')) errs.push('صور أماكن تسليك الكيبلات');
+    if(errs.length){ alert('يرجى إكمال الحقول قبل التصدير:\n• ' + errs.join('\n• ')); return; }
+    const {blob, name} = await buildPdfBlob();
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    $('#statusBar2').textContent='تم الحفظ ✓';
+  }
+  async function sharePDF(){
+    const need=(sel)=> (document.querySelector(sel)?.value||'').trim().length>0;
+    const needF=(sel)=> (document.querySelector(sel)?.files||[]).length>0;
+    const errs=[];
+    if(!need('#customerName')) errs.push('اسم الكوستمر'); if(!need('#location')) errs.push('الموقع'); if(!need('#bandField')) errs.push('الباند'); if(!need('#techName')) errs.push('اسم الفني'); if(!need('#engName')) errs.push('المتابعة مع');
+    if(!needF('#img_pop')) errs.push('صورة باتجاه البوب'); if(!needF('#img_tower')) errs.push('صورة مكان التور/البول'); if(!needF('#img_rack')) errs.push('صورة مكان نصب الراك/الراوتر'); if(!needF('#img_cables')) errs.push('صور أماكن تسليك الكيبلات');
+    if(errs.length){ alert('يرجى إكمال الحقول قبل المشاركة:\n• ' + errs.join('\n• ')); return; }
+    try{
+      const {blob, name} = await buildPdfBlob();
+      if(navigator.canShare && navigator.canShare({ files: [new File([blob], name, {type:'application/pdf'})] })){
+        await navigator.share({ files: [ new File([blob], name, {type:'application/pdf'}) ], title: name, text: 'تقرير موقع' });
+      }else{
+        const url = URL.createObjectURL(blob); window.open(url, '_blank');
+      }
+    }catch(e){ alert('تعذر المشاركة: ' + e.message); }
+  }
+  $('#exportBtn')?.addEventListener('click', exportPDF);
+  $('#shareBtn')?.addEventListener('click', sharePDF);
+})();</script>
+
+</body>
+</html>
